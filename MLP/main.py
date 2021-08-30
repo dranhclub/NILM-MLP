@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from MLPClassifier import MLPClassifier
+from MyMLPRegressor import MyMLPRegressor
 
 plt.rcParams['figure.figsize'] = (20, 4)
 
@@ -32,55 +32,59 @@ column_names = ['light', 'socket', 'heater', 'aircond1', 'aircond2', 'aircond3',
 for col_name in column_names:
     q_df[col_name] = np.tan(np.arccos(pf_df[col_name])) * p_df[col_name]
 
-select_device = ['light', 'socket', 'heater', 'aircond1', 'aircond2', 'aircond3', 'indcooker']
+select_device = ['heater', 'indcooker', 'aircond1']
 
 p_sum = p_df[select_device].sum(axis=1).to_numpy()
 q_sum = q_df[select_device].sum(axis=1).to_numpy()
 u_sum = u_df['u'].to_numpy()  # không cần tính tổng U, nhưng cứ đặt là u_sum cho đồng nhất
 i_sum = i_df[select_device].sum(axis=1).to_numpy() * 100  # Nhân với 100 để I không quá nhỏ
 
-plt.title("Công suất P theo thời gian")
-plt.plot(p_sum)
-plt.show()
+# plt.title("Công suất P theo thời gian")
+# plt.plot(p_sum)
+# plt.show()
 
-# -----------------PREPARE DATA-------------------
 data = []
 label = []
-threshold = 20  # ngưỡng xác định thiết bị là bật > 20W
-for i in range(1, len(p_sum)):
-    delta_p = p_sum[i] - p_sum[i - 1]
-    delta_q = q_sum[i] - q_sum[i - 1]
-    data.append([u_sum[i], i_sum[i], p_sum[i], q_sum[i], delta_p, delta_q])
-    x = 0
+for t in range(0, len(p_sum)):
+    data.append([u_sum[t], i_sum[t], p_sum[t], q_sum[t]])
+    percent = []
     for j, device_name in enumerate(select_device):
-        if p_df[device_name].iloc[i] > threshold:
-            x += 2 ** j
-
-    label.append(x)
+        if p_sum[t] == 0:
+            percent.append(0)
+        else:
+            percent.append(p_df[device_name].iloc[t] / p_sum[t])
+    label.append(percent)
 
 print("num data point =", len(data))
 
-
-def tobase2(n):
-    length = len(select_device)
-    ret = [0 for i in range(length)]
-    i = length - 1
-    while n > 0:
-        ret[i] = n % 2
-        n = n // 2
-        i -= 1
-    return ret
-
-
-def train_test_split(X, y, test_size=0.3):
-    id = int(len(X) * (1 - test_size))
-    return X[:id], X[id:], y[:id], y[id:]
-
-
 X = np.array(data)
-y = np.array([tobase2(label[i]) for i in range(len(label))])
+y = np.array(label)
+print(f'{X.shape=}')
+print(f'{y.shape=}')
+print(f'{X[0:10]=}')
+print(f'{y[0:10]=}')
 
-model = MLPClassifier()
+model = MyMLPRegressor(
+                    hidden_layer_sizes=(30,),
+                    learning_rate=0.01,
+                    random_state=0,
+                    max_iter=100000,
+                    n_iter_no_change=50,
+                    tol=0.001,
+                    hidden_activation='tanh',
+                    output_activation='sigmoid',
+                    solver='adam',
+                    loss_func='mse',
+                    batch_size=2000)
+model.fit(X, y)
+score = model.score(X, y)
+print("Score=", score)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)
-model.fit(X_train, y_train)
+yhat = model.predict(X)
+a = 8000
+b = 9000
+for i in range(y.shape[1]):
+    plt.plot(y[a:b, i] * p_sum[a:b])
+    plt.plot(yhat[a:b, i] * p_sum[a:b])
+    plt.title(select_device[i])
+    plt.show()
